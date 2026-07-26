@@ -96,8 +96,9 @@ app.post('/api/leads', async (req, res) => {
             return res.status(400).json({ error: 'Name and phone number are required fields.' });
         }
 
-        const query = 'INSERT INTO ?? (name, email, phone, message, created_at) VALUES (?, ?, ?, ?, NOW())';
-        const [result] = await pool.execute(query, [tableName, name, email, phone, message]);
+        // Use safe template string interpolation for the whitelisted table name and prepared statement for values
+        const query = `INSERT INTO ${tableName} (name, email, phone, message, created_at) VALUES (?, ?, ?, ?, NOW())`;
+        const [result] = await pool.execute(query, [name, email, phone, message]);
 
         res.status(201).json({
             success: true,
