@@ -1,11 +1,12 @@
 app.post('/api/leads', async (req, res) => {
     try {
-        // Automatically grab fields whether they come from index.html or admission.html
-        const name = req.body.full_name || req.body.name;
-        const phone = req.body.phone_number || req.body.phone;
+        // Automatically support different field names from various forms (index, admission, contact)
+        const name = req.body.name || req.body.full_name;
+        const phone = req.body.phone || req.body.phone_number;
         const email = req.body.email || null;
         const message = req.body.message || null;
 
+        // Only Name and Phone are mandatory
         if (!name || !phone) {
             return res.status(400).json({ error: 'Name and phone number are required fields.' });
         }
