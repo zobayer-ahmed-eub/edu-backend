@@ -4,10 +4,12 @@ const cors = require('cors');
 
 const app = express();
 
+// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Azure MySQL Connection Pool with SSL required by Azure
 const pool = mysql.createPool({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
@@ -20,13 +22,14 @@ const pool = mysql.createPool({
     queueLimit: 0
 });
 
-// Initialize database connection and auto-create the table if missing
+// Initialize database connection and auto-create required tables if missing
 async function initDatabase() {
     try {
         const connection = await pool.getConnection();
         console.log('Successfully connected to Azure MySQL Database!');
 
-        const createTableQuery = `
+        // Create default leads table
+        await connection.execute(`
             CREATE TABLE IF NOT EXISTS leads (
                 id INT AUTO_INCREMENT PRIMARY KEY,
                 name VARCHAR(255) NOT NULL,
@@ -35,10 +38,33 @@ async function initDatabase() {
                 message TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             );
-        `;
-        await connection.execute(createTableQuery);
-        console.log('Leads table verified/created successfully!');
+        `);
 
+        // Create australia_requests table
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS australia_requests (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                email VARCHAR(255),
+                phone VARCHAR(50) NOT NULL,
+                message TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+
+        // Create admission_requests table
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS admission_requests (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                email VARCHAR(255),
+                phone VARCHAR(50) NOT NULL,
+                message TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+        `);
+
+        console.log('All required database tables verified/created successfully!');
         connection.release();
     } catch (err) {
         console.error('Database initialization failed:', err.message);
@@ -46,10 +72,12 @@ async function initDatabase() {
 }
 initDatabase();
 
+// Health check route
 app.get('/', (req, res) => {
     res.json({ status: 'EduFile Backend API is running successfully!' });
 });
 
+// Form submission endpoint (Supports dynamic table routing and field mapping)
 app.post('/api/leads', async (req, res) => {
     try {
         const name = req.body.name || req.body.full_name;
@@ -57,12 +85,19 @@ app.post('/api/leads', async (req, res) => {
         const email = req.body.email || null;
         const message = req.body.message || null;
 
+        // Determine target table with a strict security whitelist to prevent SQL injection
+        let tableName = req.body.database_table || 'leads';
+        const allowedTables = ['leads', 'admission_requests', 'australia_requests'];
+        if (!allowedTables.includes(tableName)) {
+            tableName = 'leads';
+        }
+
         if (!name || !phone) {
             return res.status(400).json({ error: 'Name and phone number are required fields.' });
         }
 
-        const query = 'INSERT INTO leads (name, email, phone, message, created_at) VALUES (?, ?, ?, ?, NOW())';
-        const [result] = await pool.execute(query, [name, email, phone, message]);
+        const query = 'INSERT INTO ?? (name, email, phone, message, created_at) VALUES (?, ?, ?, ?, NOW())';
+        const [result] = await pool.execute(query, [tableName, name, email, phone, message]);
 
         res.status(201).json({
             success: true,
@@ -75,6 +110,7 @@ app.post('/api/leads', async (req, res) => {
     }
 });
 
+// Start server on Render's dynamic port or default to 10000 locally
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
