@@ -2,15 +2,12 @@ const express = require('express');
 const mysql = require('mysql2/promise');
 const cors = require('cors');
 
-// Initialize app FIRST before using it
 const app = express();
 
-// Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Azure MySQL Connection Pool with SSL required by Azure
 const pool = mysql.createPool({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
@@ -23,24 +20,36 @@ const pool = mysql.createPool({
     queueLimit: 0
 });
 
-// Test database connection on startup
-async function testDbConnection() {
+// Initialize database connection and auto-create the table if missing
+async function initDatabase() {
     try {
         const connection = await pool.getConnection();
         console.log('Successfully connected to Azure MySQL Database!');
+
+        const createTableQuery = `
+            CREATE TABLE IF NOT EXISTS leads (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                name VARCHAR(255) NOT NULL,
+                email VARCHAR(255),
+                phone VARCHAR(50) NOT NULL,
+                message TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+        `;
+        await connection.execute(createTableQuery);
+        console.log('Leads table verified/created successfully!');
+
         connection.release();
     } catch (err) {
-        console.error('Database connection failed:', err.message);
+        console.error('Database initialization failed:', err.message);
     }
 }
-testDbConnection();
+initDatabase();
 
-// Health check route
 app.get('/', (req, res) => {
     res.json({ status: 'EduFile Backend API is running successfully!' });
 });
 
-// Form submission endpoint (Supports all your frontend form variations)
 app.post('/api/leads', async (req, res) => {
     try {
         const name = req.body.name || req.body.full_name;
@@ -66,7 +75,6 @@ app.post('/api/leads', async (req, res) => {
     }
 });
 
-// Start server on Render's dynamic port or default to 10000 locally
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
